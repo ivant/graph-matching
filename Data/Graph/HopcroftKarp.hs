@@ -1,22 +1,27 @@
-{-# LANGUAGE RankNTypes, ScopedTypeVariables, TransformListComp, ViewPatterns #-}
-module HopcroftKarp where
+{-# LANGUAGE ScopedTypeVariables, TransformListComp, ViewPatterns #-}
+module Data.Graph.HopcroftKarp (
+  L(..), R(..),
+  LR,
+  (-->),
+  findMatching
+) where
 
 import Control.Applicative
+import Control.Monad (forM_, unless, when)
 import Control.Monad.ST.Strict
-import Control.Monad.Cont
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Cont
 import Data.Array
 import Data.STRef
 import qualified Data.IntMap as IM; import Data.IntMap (IntMap)
-import Data.List (find, foldl', group)
+import Data.List (find, foldl')
 import GHC.Exts (sortWith)
 
 newtype L = L { unL :: Int } deriving (Eq, Ord, Ix)
 newtype R = R { unR :: Int } deriving (Eq, Ord, Ix)
 
-instance Show L where
-  show (L l) = show l
-instance Show R where
-  show (R r) = show r
+instance Show L where show (L l) = show l
+instance Show R where show (R r) = show r
 
 type LR = (L, R)
 
@@ -25,6 +30,7 @@ a --> b = (L a, R b)
 
 data LPred = Matched | FirstLayer | LPred R deriving (Show,Eq)
 
+-- | Finds a maximal cardinality bipartite matching for a bipartite graph.
 findMatching :: Int   -- ^ number of vertices in L
              -> Int   -- ^ number of vertices in R
              -> [LR]  -- ^ edges between L and R. In each set vertices are numbered from 0.
@@ -33,10 +39,7 @@ findMatching n m es = loop initialMatching
   where
     -- | A map from vertices in L to a list of vertices in R
     adj :: IntMap [R]
-    adj = IM.fromList [ (head l, r) | (L l, r) <- es
-                                    , then sortWith by l
-                                    , then group by l
-                                    ]
+    adj = IM.fromList [ (head l, r) | (L l, r) <- es, then group by l ]
 
     -- | Start with a greedy matching. That's redundant but more efficient.
     -- Matching is from a vertex in R to a vertex in L
@@ -105,20 +108,19 @@ findMatching n m es = loop initialMatching
         bfs :: [L]                        -- ^ BFS roots
             -> Array R [L]                -- ^ array of predecessors for vertices in R
             -> Array L LPred              -- ^ array of predecessors for vertices in L
-            -> (Array R [L],              -- ^ final array of R predecessors
-                Array L LPred,            -- ^ final array of L predecessors
-                [R])                      -- ^ list of unmatched vertices in R
+            -> (Array R [L],              --   final array of R predecessors
+                Array L LPred,            --   final array of L predecessors
+                [R])                      --   list of unmatched vertices in R
         bfs layer rPreds lPred = 
             let rLayer :: [(R, [L])]
                 rLayer = [ (head r,l) | l <- layer
-                                      , r <- adj IM.! (unL l)
+                                      , r <- adj IM.! unL l
                                       , null (rPreds ! r)
-                                      , then sortWith by r
                                       , then group by r
                                       ]
                 rPreds' = rPreds // rLayer
                 (layer', lPredUpdate, unmatched) = foldl' (\(ls,lps,us) (r,ps) ->
-                    case (unR r) `IM.lookup` matching of
+                    case unR r `IM.lookup` matching of
                       Just l  -> (l:ls, (l,LPred r):lps, us)
                       Nothing -> (ls, lps, r:us)
                   ) ([], [], []) rLayer
