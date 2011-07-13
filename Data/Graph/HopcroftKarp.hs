@@ -38,17 +38,18 @@ findMatching :: Int   -- ^ number of vertices in L
 findMatching n m es = loop initialMatching
   where
     -- | A map from vertices in L to a list of vertices in R
-    adj :: IntMap [R]
-    adj = IM.fromList [ (head l, r) | (L l, r) <- es, then group by l ]
+    adjacent :: Array L [R]
+    adjacent = accumArray (flip (:)) [] (L 0,L $ n-1) es
 
     -- | Start with a greedy matching. That's redundant but more efficient.
     -- Matching is from a vertex in R to a vertex in L
     initialMatching :: IntMap L
-    initialMatching = foldl' (\m (l,map unR -> rs) -> 
-                        case find (not . (`IM.member` m)) rs of
-                          Nothing -> m
-                          Just r  -> IM.insert r (L l) m
-                      ) IM.empty $ IM.toList adj
+    initialMatching = foldl' (\matching (unL -> l,map unR -> rs) -> 
+                        case find (not . (`IM.member` matching)) rs of
+                          Nothing -> matching
+                          Just r  -> IM.insert r (L l) matching
+                      ) IM.empty $ assocs adjacent
+
     convertMatching :: IntMap L -> [LR]
     convertMatching m = [ (l, R r) | (r,l) <- IM.toList m ]
 
@@ -114,7 +115,7 @@ findMatching n m es = loop initialMatching
         bfs layer rPreds lPred = 
             let rLayer :: [(R, [L])]
                 rLayer = [ (head r,l) | l <- layer
-                                      , r <- adj IM.! unL l
+                                      , r <- adjacent ! l
                                       , null (rPreds ! r)
                                       , then group by r
                                       ]
