@@ -1,5 +1,5 @@
 Name:                graph-matching
-Version:             0.1
+Version:             0.2
 Synopsis:            Bipartite graph maximum cardinality matching using Hopcroft-Karp algorithm
 -- Description:         
 License:             BSD3
