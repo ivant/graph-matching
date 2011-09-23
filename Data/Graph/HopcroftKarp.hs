@@ -1,9 +1,29 @@
 {-# LANGUAGE ScopedTypeVariables, TransformListComp, ViewPatterns #-}
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Data.Graph.HopcroftKarp
+-- Copyright   :  (c) 2011 Hexagram 49, Inc. (see LICENSE)
+-- License     :  BSD-style (see LICENSE)
+-- Maintainer  :  Ivan.Tarasov@gmail.com
+-- Stability   :  provisional
+-- Portability :  portable
+--
+-- Library for finding a maximum cardinality matching in a bipartite graph using Hopcroft-Karp algorithm.
+--
+-----------------------------------------------------------------------------
+
 module Data.Graph.HopcroftKarp (
-  L(..), R(..),
+  -- * Matching functions
+  findMatching,
+  findMatching',
+  -- * Datatypes
+  L(..),
+  R(..),
   LR,
+  -- * Convenience functions
   (-->),
-  findMatching
+  (--->),
+  numberVertices
 ) where
 
 import Control.Applicative
@@ -13,11 +33,24 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Cont
 import Data.Array
 import Data.STRef
+import qualified Data.IntSet as IS; import Data.IntSet (IntSet)
 import qualified Data.IntMap as IM; import Data.IntMap (IntMap)
+import qualified Data.Map as M; import Data.Map (Map)
 import Data.List (find, foldl')
 import GHC.Exts (sortWith)
+import Data.Tuple (swap)
 
+-- | Convenience function to simplify entry of adjacent nodes.
+(-->) :: a -> b -> (a, b)
+l --> r = (l, r)
+
+-- | Convenience function to simplify entry of adjacent nodes.
+(--->) :: Int -> Int -> LR
+l ---> r = L l --> R r
+
+-- | Newtype alias for a node in the left vertex subset of the bipartite graph.
 newtype L = L { unL :: Int } deriving (Eq, Ord, Ix)
+-- | Newtype alias for a node in the right vertex subset of the bipartite graph.
 newtype R = R { unR :: Int } deriving (Eq, Ord, Ix)
 
 instance Show L where show (L l) = show l
@@ -25,21 +58,43 @@ instance Show R where show (R r) = show r
 
 type LR = (L, R)
 
-(-->) :: Int -> Int -> LR
-a --> b = (L a, R b)
-
 data LPred = Matched | FirstLayer | LPred R deriving (Show,Eq)
 
--- | Finds a maximal cardinality bipartite matching for a bipartite graph.
-findMatching :: Int   -- ^ number of vertices in L
-             -> Int   -- ^ number of vertices in R
-             -> [LR]  -- ^ edges between L and R. In each set vertices are numbered from 0.
-             -> [LR]  -- ^ maximum cardinality matching (from L to R)
-findMatching n m es = loop initialMatching
+-- | Finds a maximum cardinality bipartite matching for a bipartite graph.
+findMatching :: forall l r. (Ord l, Ord r)
+             => [(l, r)]      -- ^ Edges between L and R.
+             -> [(l, r)]      -- ^ Maximum cardinality matching (from L to R).
+findMatching es = map convertLR $ findMatching' edges n m
+  where
+    -- | We assign the numbers to unique vertices on the left and on the right,
+    -- and store them in arrays, where the array index is the number of the vertex.
+    edges :: [LR]
+    numberedLs :: Array Int l
+    numberedRs :: Array Int r
+    n, m :: Int
+    (edges, numberedLs, numberedRs) = numberVertices es
+    n = rangeSize (bounds numberedLs)
+    m = rangeSize (bounds numberedRs)
+
+    convertLR :: LR -> (l, r)
+    convertLR (L l, R r) = (numberedLs ! l, numberedRs ! r)
+
+-- | Finds a maximum cardinality bipartite matching for a bipartite graph.
+-- Assumes that the edges are numbered from @0@ to @n-1@ and @0@ to @m-1@ in the
+-- left and right vertex subsets of the bipartite graph.
+--
+-- This function doesn't do any renumbering and may be inefficient if the
+-- integer indices of the vertices are sparse. For a more general function, see
+-- 'findMatching', which does vertex (re)numbering.
+findMatching' :: [LR] -- ^ Edges between L and R.
+              -> Int  -- ^ Size of L.
+              -> Int  -- ^ Size of R.
+              -> [LR]
+findMatching' edges n m = loop initialMatching
   where
     -- | A map from vertices in L to a list of vertices in R
     adjacent :: Array L [R]
-    adjacent = accumArray (flip (:)) [] (L 0,L $ n-1) es
+    adjacent = accumArray (flip (:)) [] (L 0,L $ n-1) edges
 
     -- | Start with a greedy matching. That's redundant but more efficient.
     -- Matching is from a vertex in R to a vertex in L
@@ -131,4 +186,32 @@ findMatching n m es = loop initialMatching
                     bfs layer' rPreds' lPred'
                   else
                     (rPreds', lPred', unmatched)
+
+-- | Take a list of pairs of vertices from left and right vertex sets and number them starting from @0@ (left and right sets are numbered separately).
+--
+-- Returns a triple, consisting of list of 'LR' edges, and two arrays from integers to the left and right vertices respectively.
+numberVertices :: (Ord l, Ord r)
+               => [(l, r)]
+               -> ([LR], Array Int l, Array Int r)
+numberVertices es =
+    let (lsMap, rsMap, edges) = foldl' addEdge (M.empty, M.empty, []) es
+        n = M.size lsMap
+        m = M.size rsMap
+      in
+        ( edges
+        , array (0,n-1) (map swap $ M.toList lsMap)
+        , array (0,m-1) (map swap $ M.toList rsMap)
+        )
+        
+  where
+    addEdge :: (Ord l, Ord r) => (Map l Int, Map r Int, [LR]) -> (l, r) -> (Map l Int, Map r Int, [LR])
+    addEdge (lsMap, rsMap, edges) (l,r) = (lsMap', rsMap', (L lIdx --> R rIdx) : edges)
+      where
+        (lIdx, lsMap') = l `insertOrReturnIdx` lsMap
+        (rIdx, rsMap') = r `insertOrReturnIdx` rsMap
+
+    insertOrReturnIdx :: Ord x => x -> Map x Int -> (Int, Map x Int)
+    insertOrReturnIdx x idxMap = case x `M.lookup` idxMap of
+        Nothing  -> let idx = M.size idxMap in idx `seq` (idx, M.insert x idx idxMap)
+        Just idx -> (idx, idxMap)
 
