@@ -2,30 +2,20 @@ Name:                graph-matching
 Version:             0.1
 Synopsis:            Bipartite graph maximum cardinality matching using Hopcroft-Karp algorithm
 -- Description:         
-License:             AllRightsReserved
+License:             BSD3
 License-file:        LICENSE
 Author:              Ivan Tarasov
 Maintainer:          ivan@rethinkdb.com
-Category:            Algorithms
+Category:            Algorithms, Graphs
 Build-type:          Simple
--- Extra-source-files:  
 
-Cabal-version:       >=1.2
-
+Cabal-version:       >= 1.2
 
 Library
-  -- Modules exported by the library.
-  Exposed-modules:     Data.Graph.HopcroftKarp
+  Exposed-modules:   Data.Graph.HopcroftKarp
   
-  -- Packages needed in order to build this package.
   Build-depends:     base          >= 4     && < 5
                    , containers    >= 0.4   && < 0.5
                    , array         >= 0.3   && < 0.4
                    , transformers  >= 0.2.2 && < 0.3
-  
-  -- Modules not exported by this package.
-  -- Other-modules:       
-  
-  -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
-  -- Build-tools:         
   
